@@ -1,0 +1,156 @@
+- name: "Change Hostname"
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: "Change Hostname"
+      hostname:
+        name: "{{ hostname }}"
+      become: yes
+    - name: 'Update cloud-init to preserve hostname changes'
+      become: yes
+      lineinfile:
+        state: present
+        dest: /etc/cloud/cloud.cfg
+        regexp: '^preserve_hostname:'
+        line: 'preserve_hostname: true'
+    - name: 'Update cloud-init to preserve hostname changes (again)'
+      become: yes
+      lineinfile:
+        state: present
+        dest: /etc/cloud/cloud.cfg
+        regexp: '^hostname:'
+        line: "hostname: {{hostname}}"
+
+- name: "Remove the Old Kernel Devel package"
+  hosts: all
+  tasks:
+  - name: "Remove the Old Kernel Devel package"
+    become: yes
+    yum:
+      name: kernel-devel
+      state: absent
+
+- name: "OS Updates & Reboot"
+  hosts: all
+  gather_facts: no
+  tasks:
+  - name: upgrade all packages
+    yum:
+      name: '*'
+      state: latest
+    become: yes
+  - name: Reboot host post updates
+    become: yes
+    reboot:
+        test_command: uptime
+
+- name: "Join Domain for Linux"
+  hosts: all
+  tasks:
+    - name: "Main Script"
+      script:
+        OPS-Linux-JoinAD/linux_ad_integration.sh --install {{ ad_private_ip }} {{ domain_admin_user }} {{ domain_admin_password }}
+      become: yes
+      ignore_errors: True
+
+
+- name: "Qualys & Tanaium Installation"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Copy and execute tanium script
+      script: OPS-Linux-Qualys-Tanium/qualys_tanium_install.sh
+      become: true
+      become_user: root
+
+
+- name: "Install syslog on Linux"
+  hosts: all
+  gather_facts: no
+  vars:
+    ansible_become: yes
+  tasks:
+    - name: "Create configuration file for remote syslog forward"
+      copy:
+        content: |
+          ## Please do not overwrite this file as its managed by Ansible
+          *.* @{{ syslog_server_ip }}:514
+        dest: "/etc/rsyslog.d/remote_syslog_server.conf"
+        owner: root
+        group: root
+        mode: 0600
+        force: yes
+    - name: "Restart syslog service"
+      service:
+        name: rsyslog
+        state: restarted
+
+- name: "Install NRPE Client v3.2.1"
+  hosts: all
+  gather_facts: false
+  tasks:
+  - name: execute script to fresh install NRPE Client v3.2.1
+    script: OPS-Linux-NRPE_Update/AIP_NRPEUpdate_v3.sh --install {{ syslog_server_ip  }}
+    become: true
+    become_user: root
+
+
+- name: "Install EPP"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Copy and execute symantec agent script
+      script: OPS-Linux-Symantec/AIP_EPP_Deploy.sh {{ cloudregion }}
+      become: true
+      become_user: root
+
+
+
+- name: "Collect usage metrics"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Copy and execute metrics script
+      script: OPS-Linux-Metrics/linux_count_metrics.sh
+      become: true
+      become_user: root
+
+- name: "Installing Spacewalk"
+  hosts: all
+  gather_facts: false
+  tasks:
+
+    - name: 'Install spacewalk dependencies'
+      become: true
+      become_user: root
+      yum:
+        name:
+          - rhn-setup
+          - usermode
+          - python-gudev
+          - python-ethtool
+          - python-dmidecode
+          - python-hwdata
+          - pygobject2
+          - pyOpenSSL
+          - m2crypto
+          - libnl
+        state: present
+      when: not rhel_byol
+
+    - name: Copy and execute spacewalk script
+      script: OPS-Linux-Spacewalk/AIP_registerspacewalk.sh {{ hostname }}
+      become: true
+      become_user: root
+      when: not rhel_byol
+
+- name: "ACN RHEL Satellite Registration"
+  hosts: all
+  gather_facts: false
+  tasks:
+
+    - name: Copy and execute RHEL BYOL registration script
+      script: OPS-Linux-ACN-Satellite/AIP_RHEL_Satellite_Reg.sh
+      become: true
+      become_user: root
+      when: rhel_byol
