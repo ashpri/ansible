@@ -1,0 +1,7 @@
+- name: "Join Domain for Linux"
+  hosts: all
+  tasks:
+    - name: "Main Script"
+      script:
+        linux_ad_integration.sh --install {{ ad_private_ip }} {{ domain_admin_user }} {{ domain_admin_password }}
+      become: yes
