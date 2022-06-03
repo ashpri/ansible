@@ -1,0 +1,22 @@
+- name: "Change Hostname"
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: "Change Hostname"
+      hostname:
+        name: "{{ hostname }}"
+      become: yes
+    - name: 'Update cloud-init to preserve hostname changes'
+      become: yes
+      lineinfile:
+        state: present
+        dest: /etc/cloud/cloud.cfg
+        regexp: '^preserve_hostname:'
+        line: 'preserve_hostname: true'
+    - name: 'Update cloud-init to preserve hostname changes (again)'
+      become: yes
+      lineinfile:
+        state: present
+        dest: /etc/cloud/cloud.cfg
+        regexp: '^hostname:'
+        line: "hostname: {{hostname}}"
